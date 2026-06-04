@@ -76,10 +76,11 @@ function rowToLead(raw: Record<string, string>, fields: Partial<Record<Canonical
   let lastName = get("lastName");
   let fullName = get("fullName");
 
-  if (!fullName && (firstName || lastName)) {
+  // Explicit first/last columns are authoritative — rebuild fullName from them
+  // so a fuzzy "name" match (e.g. Apollo's "Company Name for Emails") can't win.
+  if (firstName || lastName) {
     fullName = [firstName, lastName].filter(Boolean).join(" ");
-  }
-  if (fullName && !firstName && !lastName) {
+  } else if (fullName) {
     const parts = fullName.split(/\s+/);
     firstName = parts[0];
     lastName = parts.length > 1 ? parts.slice(1).join(" ") : undefined;
@@ -109,7 +110,7 @@ function rowsToLeads(headers: string[], records: Record<string, string>[]): Pars
   return { leads, columns: headers };
 }
 
-function parseCsv(text: string): ParsedFile {
+export function parseCsvText(text: string): ParsedFile {
   const res = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: "greedy",
@@ -161,7 +162,61 @@ function parseWorkbook(buf: ArrayBuffer): ParsedFile {
 export async function parseFile(file: File): Promise<ParsedFile> {
   const name = file.name.toLowerCase();
   if (name.endsWith(".csv") || file.type === "text/csv") {
-    return parseCsv(await file.text());
+    return parseCsvText(await file.text());
   }
   return parseWorkbook(await file.arrayBuffer());
+}
+
+export type ManualLeadValues = {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  linkedin?: string;
+  website?: string;
+  location?: string;
+};
+
+const STANDARD_COLUMN: Record<Canonical, string> = {
+  email: "Email",
+  firstName: "First Name",
+  lastName: "Last Name",
+  fullName: "Full Name",
+  title: "Title",
+  company: "Company",
+  linkedin: "LinkedIn",
+  website: "Website",
+  location: "Location",
+};
+
+/**
+ * Build a `raw` row for a manually-added lead. Aligns each value to the file's
+ * existing column when one is detected (so a person added to an Apollo export
+ * lands in the right Apollo columns), and appends a standard column otherwise.
+ */
+export function leadValuesToRaw(
+  values: ManualLeadValues,
+  columns: string[],
+): { raw: Record<string, string>; columns: string[] } {
+  const fields = detectFields(columns);
+  const raw: Record<string, string> = {};
+  for (const c of columns) raw[c] = "";
+  const outColumns = [...columns];
+
+  (Object.keys(values) as Canonical[]).forEach((key) => {
+    const val = (values as Record<Canonical, string | undefined>)[key]?.trim();
+    if (!val) return;
+    const existing = fields[key];
+    if (existing) {
+      raw[existing] = val;
+    } else {
+      const std = STANDARD_COLUMN[key];
+      if (!outColumns.includes(std)) outColumns.push(std);
+      raw[std] = val;
+    }
+  });
+
+  return { raw, columns: outColumns };
 }

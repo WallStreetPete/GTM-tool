@@ -30,9 +30,8 @@ Copy `.env.example` → `.env.local`, fill in what you have, and restart.
 | Key | What it unlocks | Where |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Real AI-written openers (default model: `claude-sonnet-4-6`) | https://console.anthropic.com |
-| `RAPIDAPI_KEY` | LinkedIn enrichment **with recent posts** (best personalization) | [Fresh LinkedIn Profile Data](https://rapidapi.com/freshdata-freshdata-default/api/fresh-linkedin-profile-data) |
-| `PDL_API_KEY` | Structured career enrichment from email / name+company | https://www.peopledatalabs.com/signup |
-| `APOLLO_API_KEY` / `EXA_API_KEY` | Alternate enrichment sources | Apollo / Exa |
+| `RAPIDAPI_KEY` | LinkedIn enrichment — full profile, work history, skills (the main one) | [Fresh LinkedIn Profile Data](https://rapidapi.com/freshdata-freshdata-default/api/fresh-linkedin-profile-data) |
+| `APOLLO_API_KEY` / `EXA_API_KEY` | Fallback enrichment for leads with no LinkedIn URL | Apollo / Exa |
 
 The header shows a **Demo mode** / **Live AI** badge so you always know which you're in.
 See **[ENRICHMENT.md](./ENRICHMENT.md)** for the full enrichment strategy and the
@@ -44,8 +43,8 @@ See **[ENRICHMENT.md](./ENRICHMENT.md)** for the full enrichment strategy and th
   auto-detects email / name / title / company / LinkedIn columns from any layout.
 - **Store** — leads + your campaign brief persist in the browser (`localStorage` via
   Zustand), so a refresh won't lose your work.
-- **Enrich** — `POST /api/enrich` runs the provider waterfall (LinkedIn → PDL → Apollo
-  → web → heuristic) and returns a compact dossier per lead.
+- **Enrich** — `POST /api/enrich` runs the provider waterfall (LinkedIn → Apollo →
+  web → heuristic) and returns a compact dossier per lead.
 - **Generate** — `POST /api/generate` writes openers with the AI SDK, batched and with
   a per-batch mock fallback so partial failures never break a run.
 - **Export** — `lib/export.ts` builds a CSV: every original column preserved, plus a

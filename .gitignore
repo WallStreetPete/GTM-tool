@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# uploaded lead lists — never commit real prospect data
+*.csv
+
+# local scratch screenshots (not part of the app)
+/image.png

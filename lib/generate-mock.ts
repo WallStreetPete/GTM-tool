@@ -21,12 +21,8 @@ export function mockLine(lead: Lead, config: GenerateConfig): string {
     `Noticed ${company} looks to be in a real growth window — usually means the ${title} is juggling ten priorities at once.`,
   ];
 
-  const line = openers[hash(lead.id + company) % openers.length];
-  if (config.lines === 2) {
-    const second = theme
-      ? ` Reaching out because ${theme} feels especially relevant to where ${company} is headed.`
-      : ` Reaching out with something I think is genuinely relevant to where ${company} is headed.`;
-    return line + second;
-  }
+  let line = openers[hash(lead.id + company) % openers.length];
+  const max = config.maxChars || 200;
+  if (line.length > max) line = line.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
   return line;
 }

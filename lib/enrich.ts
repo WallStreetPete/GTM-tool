@@ -1,17 +1,16 @@
 // Pluggable lead enrichment with a provider waterfall.
 //
 // Priority (first one that resolves for a given lead wins):
-//   1. RAPIDAPI_KEY  -> Fresh LinkedIn Profile Data: full profile + RECENT POSTS,
-//                       summarized by the model into a personality/execution dossier.
-//                       (Best signal for "how they communicate / how they execute".)
-//   2. PDL_API_KEY   -> People Data Labs: structured career history / firmographics.
-//                       Accepts LinkedIn URL, work email, OR name + company.
-//   3. APOLLO_API_KEY-> Apollo people/match (firmographics + title).
-//   4. EXA_API_KEY   -> public web search, summarized by the model.
-//   5. (none)        -> heuristic dossier from the row itself.
+//   1. RAPIDAPI_KEY  -> Fresh LinkedIn Profile Data (/enrich-lead): full profile —
+//                       headline, "about", complete work history, education, skills.
+//                       This is the primary source: who they are and what they do.
+//   2. APOLLO_API_KEY-> Apollo people/match, used as a fallback for leads that have
+//                       no LinkedIn URL (matches on email / name + company).
+//   3. EXA_API_KEY   -> public web search, summarized by the model.
+//   4. (none)        -> heuristic dossier from the row itself.
 //
 // We deliberately do NOT drive the user's own LinkedIn session (PhantomBuster/TexAu
-// style) — that gets accounts banned. See ENRICHMENT.md for the full rationale.
+// style) — that gets accounts banned. See ENRICHMENT.md for the rationale.
 import { generateObject } from "ai";
 import { z } from "zod";
 import { resolveModel } from "./model";
@@ -32,121 +31,123 @@ export type EnrichInput = {
   email?: string;
 };
 
-const dossierSchema = z.object({
-  summary: z.string(),
-  signals: z.array(z.string()),
-  interests: z.array(z.string()).optional(),
-  pastRoles: z.array(z.string()).optional(),
-});
+/* ------------------------- 1. Fresh LinkedIn Profile -------------------- */
 
-/* ----------------------------- 1. LinkedIn ------------------------------ */
+type FreshExperience = {
+  title?: string;
+  company?: string;
+  date_range?: string;
+  is_current?: boolean;
+  location?: string;
+  description?: string;
+};
+type FreshEducation = {
+  school?: string;
+  degree?: string;
+  field_of_study?: string;
+  date_range?: string;
+};
+type FreshProfile = {
+  full_name?: string;
+  headline?: string;
+  job_title?: string;
+  company?: string;
+  company_industry?: string;
+  about?: string;
+  location?: string;
+  follower_count?: number;
+  is_creator?: boolean;
+  skills?: string; // pipe-delimited string, e.g. "Sales|Finance|Python"
+  experiences?: FreshExperience[];
+  educations?: FreshEducation[];
+};
 
-function linkedinHandle(url?: string): string | null {
-  if (!url) return null;
-  const m = url.match(/linkedin\.com\/(?:in|pub)\/([^/?#]+)/i);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-async function linkedinFresh(input: EnrichInput, model: Model): Promise<Dossier | null> {
+async function linkedinFresh(input: EnrichInput): Promise<Dossier | null> {
   const key = process.env.RAPIDAPI_KEY;
-  const handle = linkedinHandle(input.linkedin);
-  if (!key || !handle) return null;
+  if (!key || !input.linkedin) return null;
 
-  const host = process.env.RAPIDAPI_LINKEDIN_HOST || "fresh-linkedin-scraper-api.p.rapidapi.com";
-  const base = `https://${host}/api/v1`;
-  const headers = { "x-rapidapi-key": key, "x-rapidapi-host": host };
-
-  const profileRes = await fetch(`${base}/user/profile?username=${encodeURIComponent(handle)}`, { headers });
-  if (!profileRes.ok) return null;
-  const profile = await profileRes.json();
-
-  // Posts are the gold signal for personality; best-effort, never fatal.
-  let posts: unknown = null;
-  try {
-    const postsRes = await fetch(`${base}/user/posts?username=${encodeURIComponent(handle)}`, { headers });
-    if (postsRes.ok) posts = await postsRes.json();
-  } catch {
-    /* posts optional */
-  }
-
-  if (!model) return null; // need the model to turn raw JSON into a usable dossier
-
-  const corpus =
-    `PROFILE:\n${JSON.stringify(profile).slice(0, 4500)}` +
-    (posts ? `\n\nRECENT POSTS:\n${JSON.stringify(posts).slice(0, 2500)}` : "");
-
-  const { object } = await generateObject({
-    model,
-    schema: dossierSchema,
-    system:
-      "You build a concise dossier on a person from their LinkedIn profile and recent posts, for cold-email personalization. Be strictly factual — only use what's in the data, never invent. 'summary' = who they are + what they focus on + how they communicate/execute (infer tone/values ONLY from their own posts). 'signals' = specific, referenceable facts (recent posts, launches, talks, role changes) — max 6. 'pastRoles' = notable prior roles. 'interests' = topics they post about.",
-    prompt: `Person: ${[input.fullName, input.title, input.company].filter(Boolean).join(" — ")}\n\n${corpus}`,
+  const host = process.env.RAPIDAPI_LINKEDIN_HOST || "fresh-linkedin-profile-data.p.rapidapi.com";
+  const params = new URLSearchParams({
+    linkedin_url: input.linkedin,
+    include_skills: "true",
+    include_certifications: "false",
+    include_profile_status: "false",
+    include_company_public_url: "false",
   });
 
-  return {
-    summary: object.summary,
-    signals: object.signals.slice(0, 6),
-    interests: object.interests,
-    pastRoles: object.pastRoles,
-    source: "linkedin",
-  };
-}
-
-/* --------------------------- 2. People Data Labs ------------------------ */
-
-async function pdlEnrich(input: EnrichInput): Promise<Dossier | null> {
-  const key = process.env.PDL_API_KEY;
-  if (!key) return null;
-
-  const params = new URLSearchParams({ min_likelihood: "2", titlecase: "true" });
-  if (input.linkedin) params.set("profile", input.linkedin);
-  else if (input.email) params.set("email", input.email);
-  else if ((input.firstName || input.fullName) && input.company) {
-    params.set("name", input.fullName || `${input.firstName} ${input.lastName ?? ""}`.trim());
-    params.set("company", input.company);
-  } else {
-    return null;
-  }
-
-  const res = await fetch(`https://api.peopledatalabs.com/v5/person/enrich?${params}`, {
-    headers: { "X-Api-Key": key },
+  const res = await fetch(`https://${host}/enrich-lead?${params}`, {
+    headers: { "x-rapidapi-key": key, "x-rapidapi-host": host },
   });
   if (!res.ok) return null;
 
-  const json = (await res.json()) as { status?: number; data?: Record<string, unknown> };
+  const json = (await res.json()) as { data?: FreshProfile };
   const d = json.data;
   if (!d) return null;
 
-  type Exp = { title?: { name?: string }; company?: { name?: string } };
-  const experience = (d.experience as Exp[] | undefined) ?? [];
-  const pastRoles = experience
-    .filter((e) => e.company?.name)
+  const experiences = d.experiences ?? [];
+  const pastRoles = experiences
     .slice(0, 6)
-    .map((e) => `${e.title?.name || "Role"} at ${e.company?.name}`);
+    .map((e) => `${e.title || "Role"} at ${e.company || "?"}${e.date_range ? ` (${e.date_range})` : ""}`);
 
-  const skills = (d.skills as string[] | undefined) ?? [];
+  const eduLines = (d.educations ?? [])
+    .slice(0, 2)
+    .map((e) => [e.degree, e.field_of_study, e.school].filter(Boolean).join(", "))
+    .filter(Boolean);
+
+  const skills =
+    typeof d.skills === "string"
+      ? d.skills.split("|").map((s) => s.trim()).filter(Boolean)
+      : [];
+
   const signals: string[] = [];
-  if (d.industry) signals.push(`Industry: ${d.industry}`);
-  if (skills.length) signals.push(`Skills: ${skills.slice(0, 6).join(", ")}`);
-  if (d.summary) signals.push(String(d.summary).slice(0, 200));
+  if (d.headline) signals.push(d.headline);
+  if (pastRoles.length) signals.push(`Career: ${pastRoles.slice(0, 4).join("; ")}`);
+  if (eduLines.length) signals.push(`Education: ${eduLines.join("; ")}`);
+  if (d.company_industry) signals.push(`Industry: ${d.company_industry}`);
+  if (d.is_creator || (d.follower_count ?? 0) > 5000) {
+    signals.push(`Active on LinkedIn — ${d.follower_count ?? 0} followers`);
+  }
 
+  const about = (d.about || "").replace(/\s+/g, " ").trim().slice(0, 600);
   const summary = [
-    d.job_title && d.job_company_name ? `${d.job_title} at ${d.job_company_name}.` : "",
-    d.location_name ? `Based in ${d.location_name}.` : "",
-    pastRoles.length ? `Career: ${pastRoles.slice(0, 3).join("; ")}.` : "",
+    d.job_title && d.company ? `${d.job_title} at ${d.company}.` : d.headline ? `${d.headline}.` : "",
+    d.location ? `Based in ${d.location}.` : "",
+    about ? `About: ${about}` : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return {
-    summary: summary || "People Data Labs profile matched.",
-    signals: signals.slice(0, 5),
+    summary: summary || `${d.full_name || "Profile"} on LinkedIn.`,
+    signals: signals.slice(0, 6),
     pastRoles,
-    source: "pdl",
+    interests: skills.slice(0, 8),
+    profile: {
+      headline: d.headline,
+      about: d.about,
+      location: d.location,
+      followerCount: d.follower_count,
+      linkedinUrl: input.linkedin,
+      experiences: experiences.map((e) => ({
+        title: e.title,
+        company: e.company,
+        dateRange: e.date_range,
+        location: e.location,
+        description: e.description,
+      })),
+      educations: (d.educations ?? []).map((e) => ({
+        school: e.school,
+        degree: e.degree,
+        field: e.field_of_study,
+        dateRange: e.date_range,
+      })),
+      skills,
+    },
+    source: "linkedin",
   };
 }
 
-/* ------------------------------- 3. Apollo ------------------------------ */
+/* ------------------------------- 2. Apollo ------------------------------ */
 
 type ApolloEmployment = { title?: string; organization_name?: string; current?: boolean };
 
@@ -200,7 +201,7 @@ async function apolloMatch(input: EnrichInput): Promise<Dossier | null> {
   };
 }
 
-/* ----------------------------- 4. Web (Exa) ----------------------------- */
+/* ----------------------------- 3. Web (Exa) ----------------------------- */
 
 type ExaResult = { title?: string; url?: string; text?: string };
 
@@ -229,7 +230,11 @@ async function exaSearch(input: EnrichInput, model: Model): Promise<Dossier | nu
     try {
       const { object } = await generateObject({
         model,
-        schema: dossierSchema,
+        schema: z.object({
+          summary: z.string(),
+          signals: z.array(z.string()),
+          interests: z.array(z.string()).optional(),
+        }),
         system:
           "Summarize public info about a person for cold-email personalization. Strictly factual — only use the sources. 'signals' = specific, referenceable facts (talks, posts, launches, role changes), max 5.",
         prompt: `Person: ${query}\n\nSources:\n${sources}`,
@@ -247,7 +252,7 @@ async function exaSearch(input: EnrichInput, model: Model): Promise<Dossier | nu
   };
 }
 
-/* ----------------------------- 5. Heuristic ----------------------------- */
+/* ----------------------------- 4. Heuristic ----------------------------- */
 
 function heuristic(input: EnrichInput): Dossier {
   const bits: string[] = [];
@@ -266,8 +271,7 @@ function heuristic(input: EnrichInput): Dossier {
 export async function enrichLead(input: EnrichInput): Promise<Dossier> {
   const { model } = resolveModel();
   const providers: Array<() => Promise<Dossier | null>> = [
-    () => linkedinFresh(input, model),
-    () => pdlEnrich(input),
+    () => linkedinFresh(input),
     () => apolloMatch(input),
     () => exaSearch(input, model),
   ];
@@ -282,9 +286,8 @@ export async function enrichLead(input: EnrichInput): Promise<Dossier> {
   return heuristic(input);
 }
 
-export function enrichmentProvider(): "linkedin" | "pdl" | "apollo" | "exa" | "heuristic" {
+export function enrichmentProvider(): "linkedin" | "apollo" | "exa" | "heuristic" {
   if (process.env.RAPIDAPI_KEY) return "linkedin";
-  if (process.env.PDL_API_KEY) return "pdl";
   if (process.env.APOLLO_API_KEY) return "apollo";
   if (process.env.EXA_API_KEY) return "exa";
   return "heuristic";

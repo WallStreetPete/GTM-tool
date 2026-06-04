@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ChevronDown, Target } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +17,8 @@ import { cn } from "@/lib/utils";
 export function CampaignBrief() {
   const config = useStore((s) => s.config);
   const setConfig = useStore((s) => s.setConfig);
-  const [open, setOpen] = useState(true);
+  const open = useStore((s) => s.briefOpen);
+  const setOpen = useStore((s) => s.setBriefOpen);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -76,7 +76,7 @@ export function CampaignBrief() {
             >
               <Textarea
                 id="offer"
-                rows={3}
+                rows={2}
                 placeholder="e.g. We auto-enrich and personalize cold emails so reply rates go up without more SDR hours."
                 value={config.offer}
                 onChange={(e) => setConfig({ offer: e.target.value })}
@@ -90,25 +90,43 @@ export function CampaignBrief() {
             >
               <Textarea
                 id="style"
-                rows={3}
+                rows={2}
                 value={config.style}
                 onChange={(e) => setConfig({ style: e.target.value })}
               />
             </Field>
 
-            <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-start sm:gap-8">
-              <label className="flex cursor-pointer items-center gap-2.5">
-                <Switch
-                  checked={config.lines === 2}
-                  onCheckedChange={(v) => setConfig({ lines: v ? 2 : 1 })}
+            <div className="sm:col-span-2">
+              <Field id="opening" label="How to open" hint="What to lead with at the very start">
+                <Textarea
+                  id="opening"
+                  rows={2}
+                  placeholder="e.g. Open by referencing something specific from their background, then one genuine, non-cheesy compliment."
+                  value={config.opening}
+                  onChange={(e) => setConfig({ opening: e.target.value })}
                 />
-                <span className="text-sm">
-                  Two-line opener
-                  <span className="text-muted-foreground ml-1.5 text-xs">
-                    (default: one line)
-                  </span>
+              </Field>
+            </div>
+
+            <div className="flex flex-col gap-4 sm:col-span-2 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex items-center gap-2.5">
+                <Label htmlFor="maxChars" className="font-normal">
+                  Max characters
+                </Label>
+                <Input
+                  id="maxChars"
+                  type="number"
+                  min={40}
+                  max={1000}
+                  step={10}
+                  value={config.maxChars}
+                  onChange={(e) => setConfig({ maxChars: Number(e.target.value) || 0 })}
+                  className="h-8 w-24"
+                />
+                <span className="text-muted-foreground text-xs">
+                  ≈ {Math.max(1, Math.round(config.maxChars / 6))} words
                 </span>
-              </label>
+              </div>
 
               <label className="flex cursor-pointer items-center gap-2.5">
                 <Switch

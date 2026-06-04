@@ -9,9 +9,8 @@ This is the strategy baked into `lib/enrich.ts`. It runs as a **waterfall**: the
 first provider that resolves for a given lead wins, falling back automatically.
 
 ```
-RAPIDAPI_KEY  → Fresh LinkedIn Profile Data (profile + recent posts)   ← richest
-PDL_API_KEY   → People Data Labs (structured career DB; email/name input)
-APOLLO_API_KEY→ Apollo people/match (firmographics + title)
+RAPIDAPI_KEY  → Fresh LinkedIn Profile Data (full profile from a LinkedIn URL)  ← primary
+APOLLO_API_KEY→ Apollo people/match — fallback when a lead has no LinkedIn URL
 EXA_API_KEY   → public web search, summarized by the model
 (none)        → heuristic dossier from the row itself
 ```
@@ -60,17 +59,16 @@ Prospeo — built to find emails, not deep profiles.)
 
 ## Recommended setup
 
-**Start with two keys** — they cover every input type and give both deep history and
-the recent posts the model needs to infer personality:
+**You really only need one enrichment key:**
 
 1. **`RAPIDAPI_KEY`** → [Fresh LinkedIn Profile Data](https://rapidapi.com/freshdata-freshdata-default/api/fresh-linkedin-profile-data)
-   — profile **+ recent posts**, used whenever a lead row has a LinkedIn URL.
-2. **`PDL_API_KEY`** → [People Data Labs](https://www.peopledatalabs.com/signup)
-   — structured fallback that works from a work **email** or **name + company** when
-   there's no LinkedIn URL.
+   — full profile (headline, about, work history, education, skills) from each lead's
+   LinkedIn URL. This is the primary and usually the only source you need.
+2. *(optional)* **`APOLLO_API_KEY`** → fallback that matches on **email** or
+   **name + company** for the occasional lead with no LinkedIn URL.
 
-Plus **`ANTHROPIC_API_KEY`** for the model that summarizes profiles and writes the
-openers. Drop them in `.env.local` (see `.env.example`) and restart.
+Plus **`ANTHROPIC_API_KEY`** for the model that writes the openers. Drop them in
+`.env.local` (see `.env.example`) and restart.
 
 ## The end-to-end pipeline
 
