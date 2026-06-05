@@ -31,7 +31,6 @@ export default function Page() {
 
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<Mode>("loading");
-  const [model, setModel] = useState<string>();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
@@ -52,7 +51,6 @@ export default function Page() {
     getStatus()
       .then((s) => {
         setMode(s.mode as Mode);
-        setModel(s.model);
       })
       .catch(() => setMode("mock"));
   }, []);
@@ -258,7 +256,7 @@ export default function Page() {
 
   return (
     <>
-      <AppHeader mode={mode} model={model} />
+      <AppHeader mode={mode} model={config.model} />
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6">
         {leads.length > 0 ? (
           <div className="space-y-5">

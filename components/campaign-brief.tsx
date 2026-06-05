@@ -12,6 +12,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useStore } from "@/lib/store";
+import { MODEL_OPTIONS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function CampaignBrief() {
@@ -33,7 +34,7 @@ export function CampaignBrief() {
               <p className="text-muted-foreground text-xs">
                 {config.theme?.trim()
                   ? config.theme
-                  : "Tell the AI the angle, who you're targeting, and your voice."}
+                  : "How the personalized opener should sound, open, and its length."}
               </p>
             </div>
           </div>
@@ -46,48 +47,22 @@ export function CampaignBrief() {
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div className="grid gap-4 border-t px-5 py-5 sm:grid-cols-2">
+          <div className="grid gap-4 border-t px-5 py-5">
             <Field
-              id="theme"
-              label="Theme / angle"
-              hint="What the campaign is about"
-            >
-              <Input
-                id="theme"
-                placeholder="e.g. Helping RevOps teams cut CRM busywork"
-                value={config.theme}
-                onChange={(e) => setConfig({ theme: e.target.value })}
-              />
-            </Field>
-
-            <Field id="icp" label="Target ICP" hint="Who you're emailing">
-              <Input
-                id="icp"
-                placeholder="e.g. VP Sales at 50–200 person B2B SaaS"
-                value={config.icp}
-                onChange={(e) => setConfig({ icp: e.target.value })}
-              />
-            </Field>
-
-            <Field
-              id="offer"
-              label="Your offer"
-              hint="The value prop / what you're pitching"
+              id="opening"
+              label="How to open"
+              hint="The opening style — what the first line leads with"
             >
               <Textarea
-                id="offer"
-                rows={2}
-                placeholder="e.g. We auto-enrich and personalize cold emails so reply rates go up without more SDR hours."
-                value={config.offer}
-                onChange={(e) => setConfig({ offer: e.target.value })}
+                id="opening"
+                rows={4}
+                placeholder={'e.g. "I came across your profile and was struck by ..." — the tool fills the blanks with their background.'}
+                value={config.opening}
+                onChange={(e) => setConfig({ opening: e.target.value })}
               />
             </Field>
 
-            <Field
-              id="style"
-              label="Style & tone"
-              hint="How the opener should sound"
-            >
+            <Field id="style" label="Style & tone" hint="How the opener should sound">
               <Textarea
                 id="style"
                 rows={2}
@@ -96,19 +71,38 @@ export function CampaignBrief() {
               />
             </Field>
 
-            <div className="sm:col-span-2">
-              <Field id="opening" label="How to open" hint="What to lead with at the very start">
-                <Textarea
-                  id="opening"
-                  rows={2}
-                  placeholder="e.g. Open by referencing something specific from their background, then one genuine, non-cheesy compliment."
-                  value={config.opening}
-                  onChange={(e) => setConfig({ opening: e.target.value })}
-                />
-              </Field>
-            </div>
+            <Field
+              id="theme"
+              label="Theme / angle"
+              hint="optional — light context; the opener won't pitch it"
+            >
+              <Input
+                id="theme"
+                placeholder="e.g. data-center modularization (optional)"
+                value={config.theme}
+                onChange={(e) => setConfig({ theme: e.target.value })}
+              />
+            </Field>
 
-            <div className="flex flex-col gap-4 sm:col-span-2 sm:flex-row sm:items-center sm:gap-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+              <div className="flex items-center gap-2.5">
+                <Label htmlFor="model" className="font-normal">
+                  Model
+                </Label>
+                <select
+                  id="model"
+                  value={config.model}
+                  onChange={(e) => setConfig({ model: e.target.value })}
+                  className="border-input bg-background h-8 rounded-md border px-2 text-sm"
+                >
+                  {MODEL_OPTIONS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · {m.hint}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex items-center gap-2.5">
                 <Label htmlFor="maxChars" className="font-normal">
                   Max characters

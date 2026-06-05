@@ -6,9 +6,8 @@ import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { GenerateConfig, Lead } from "./types";
 
 export const DEFAULT_CONFIG: GenerateConfig = {
+  model: "claude-opus-4-8",
   theme: "",
-  icp: "",
-  offer: "",
   style:
     'Casual but sharp. Lead with one specific, non-generic observation about them or their company. No greeting, no flattery clichés, no "I hope this finds you well." Sound like a smart human wrote it, not a template.',
   opening:

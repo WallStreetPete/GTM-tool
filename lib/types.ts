@@ -73,14 +73,20 @@ export type Lead = {
 
 /** The "campaign brief" that steers generation across all leads. */
 export type GenerateConfig = {
-  theme: string; // what the campaign is about
-  icp: string; // who you're targeting
-  offer: string; // what you're pitching / the value prop
+  model: string; // which Claude model generates the opener
+  theme: string; // optional light context (the tool does not pitch it)
   style: string; // tone + format instructions
-  opening: string; // what to lead with / say at the very start
+  opening: string; // the opening style — what the first line leads with
   maxChars: number; // hard character limit for the opener
   personalityAware: boolean; // adapt tone to inferred personality
 };
+
+/** Models the user can pick for opener generation (shown in the brief). */
+export const MODEL_OPTIONS = [
+  { id: "claude-opus-4-8", label: "Opus 4.8", hint: "best quality (default)" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", hint: "balanced, faster" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", hint: "fastest, cheapest" },
+] as const;
 
 export type GenerateResult = { id: string; line: string };
 

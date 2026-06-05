@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { aiAvailable, resolveModel } from "@/lib/model";
+import { aiAvailable, resolveModel, GEN_MODEL_ID } from "@/lib/model";
 import { enrichmentProvider } from "@/lib/enrich";
 
 export const runtime = "nodejs";
@@ -9,6 +9,6 @@ export async function GET() {
     aiAvailable: aiAvailable(),
     mode: resolveModel().mode,
     enrichment: enrichmentProvider(),
-    model: process.env.AI_MODEL || "claude-sonnet-4-6",
+    model: GEN_MODEL_ID,
   });
 }

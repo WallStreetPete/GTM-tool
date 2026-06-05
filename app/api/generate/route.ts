@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { resolveModel } from "@/lib/model";
+import { resolveModel, GEN_MODEL_ID } from "@/lib/model";
 import { mockLine } from "@/lib/generate-mock";
 import type { GenerateConfig, GenerateResult, Lead } from "@/lib/types";
 
@@ -48,27 +48,27 @@ function describeLead(l: LeadPayload): string {
 
 function buildSystem(config: GenerateConfig): string {
   return [
-    "You write the OPENING line(s) of cold outbound emails — the personalized hook that comes before any pitch.",
+    "You write ONLY the opening line(s) of a cold outbound email — a short, personalized hook about the recipient. The pitch and offer are handled elsewhere; never pitch or sell.",
     "",
-    "Hard rules:",
-    "- Reference something specific and true-sounding about the person or their company. Use the provided Background/Signals when present; otherwise infer tastefully from role + company.",
-    "- NEVER invent verifiable specifics (funding rounds, dollar figures, headcounts, press, awards) unless they appear in the provided background.",
-    `- Length: at most ${config.maxChars} characters total. This is a HARD limit — count characters and never exceed it.`,
-    config.opening?.trim() ? `- How to open / lead with: ${config.opening.trim()}` : "",
-    "- No greeting, no sign-off, no pitch — just the hook.",
-    "- Banned clichés: \"I hope this finds you well\", \"I came across your profile\", \"As a {title}\", \"In today's fast-paced world\", \"I wanted to reach out\".",
-    "- It must read like one sharp human wrote it to another — not a template.",
+    "## HOW TO OPEN — these are the user's exact instructions. Follow them; they OVERRIDE any default style of yours:",
+    config.opening?.trim() ||
+      "Lead with one specific, genuine observation about the person, drawn from their background.",
+    "",
+    "## TONE & STYLE:",
+    config.style || "Warm, specific, and human.",
+    "",
+    "## RULES:",
+    "- Use the opener style and phrasing the user described above, adapted naturally to each person (fill any blanks with real details about them).",
+    "- If the instructions ask you to react to their background a certain way (e.g. that it is impressive or inspiring), actually SAY that — and name a concrete, real detail from their experience to back it up. Never vague.",
+    "- Ground every opener in the person's real Background / Signals provided in the user message. Do NOT invent facts (funding, figures, headcounts, awards, news) that aren't there.",
+    `- Hard length limit: at most ${config.maxChars} characters. Count characters and never exceed it.`,
+    "- Output the opener only: no greeting, no sign-off, no pitch.",
     config.personalityAware
-      ? "- Infer each person's communication style from their role/background and match the tone."
+      ? "- Match the person's likely communication style, inferred from their role and background."
       : "",
-    "",
-    "Style instructions from the user:",
-    config.style || "(none)",
-    "",
-    "Campaign context:",
-    `- Theme: ${config.theme || "(not specified)"}`,
-    `- Target ICP: ${config.icp || "(not specified)"}`,
-    `- What we offer: ${config.offer || "(not specified)"}`,
+    config.theme?.trim()
+      ? `- Loose context (do NOT pitch it): ${config.theme.trim()}`
+      : "",
     "",
     "Return exactly one result per lead, echoing each lead's id verbatim.",
   ]
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ results: [], mode: "mock", degraded: 0 });
   }
 
-  const { model, mode } = resolveModel();
+  const { model, mode } = resolveModel(config.model?.trim() || GEN_MODEL_ID);
 
   // No key configured -> deterministic demo lines.
   if (!model) {
