@@ -22,7 +22,7 @@ export async function generateLines(leads: Lead[], config: GenerateConfig) {
     body: JSON.stringify({ leads: leads.map(genPayload), config }),
   });
   if (!res.ok) throw new Error("Generation request failed");
-  return (await res.json()) as { results: GenerateResult[]; mode: string; degraded: number };
+  return (await res.json()) as { results: GenerateResult[]; mode: string; failed: number };
 }
 
 export async function enrichLeads(leads: Lead[]) {

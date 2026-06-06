@@ -120,7 +120,7 @@ export default function Page() {
       for (let i = 0; i < batch.length; i += CHUNK) {
         const chunk = batch.slice(i, i + CHUNK);
         try {
-          const { results, mode: m } = await generateLines(chunk, config);
+          const { results, mode: m, failed } = await generateLines(chunk, config);
           applyResults(
             results.map((r) => ({
               id: r.id,
@@ -128,6 +128,7 @@ export default function Page() {
             })),
           );
           ok += results.length;
+          fail += failed ?? 0;
           if (m === "mock") mockSeen = true;
         } catch {
           fail += chunk.length;

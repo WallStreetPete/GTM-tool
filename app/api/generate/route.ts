@@ -48,19 +48,22 @@ function describeLead(l: LeadPayload): string {
 
 function buildSystem(config: GenerateConfig): string {
   return [
-    "You write ONLY the opening line(s) of a cold outbound email — a short, personalized hook about the recipient. The pitch and offer are handled elsewhere; never pitch or sell.",
+    "You write ONLY the opening line(s) of a cold outbound email — a short, personalized hook about the recipient. The pitch/offer is handled elsewhere; never pitch or sell.",
     "",
-    "## HOW TO OPEN — these are the user's exact instructions. Follow them; they OVERRIDE any default style of yours:",
+    "The user's two instruction blocks below are BOTH mandatory. Honor the HOW-TO-OPEN approach AND the TONE & STYLE together — they override your own default writing habits, not each other.",
+    "",
+    "## HOW TO OPEN (how the first line should approach the person):",
     config.opening?.trim() ||
       "Lead with one specific, genuine observation about the person, drawn from their background.",
     "",
-    "## TONE & STYLE:",
+    "## TONE & STYLE (the voice — always obey this):",
     config.style || "Warm, specific, and human.",
     "",
     "## RULES:",
-    "- Use the opener style and phrasing the user described above, adapted naturally to each person (fill any blanks with real details about them).",
-    "- If the instructions ask you to react to their background a certain way (e.g. that it is impressive or inspiring), actually SAY that — and name a concrete, real detail from their experience to back it up. Never vague.",
-    "- Ground every opener in the person's real Background / Signals provided in the user message. Do NOT invent facts (funding, figures, headcounts, awards, news) that aren't there.",
+    "- The example lines above show the intended TONE and approach — they are NOT scripts. Write each opener fresh in your own words; vary the wording so different leads never get the same opening phrase. Do not copy an example sentence verbatim.",
+    "- If the instructions say to react to their background a certain way (impressive, inspiring), convey that genuinely and specifically, anchored to ONE concrete real detail — phrased naturally, never as a canned compliment.",
+    "- Use only ONE specific, true hook from their real Background / Signals — don't cram a list of facts. Do NOT invent anything (funding, figures, headcounts, awards, news) that isn't in the provided background.",
+    "- If little or no real background is provided for a person, keep it short and grounded in their actual role/company instead of faking specifics or gushing.",
     `- Hard length limit: at most ${config.maxChars} characters. Count characters and never exceed it.`,
     "- Output the opener only: no greeting, no sign-off, no pitch.",
     config.personalityAware
@@ -106,7 +109,7 @@ export async function POST(req: Request) {
   const leads = body.leads ?? [];
   const config = body.config;
   if (!leads.length) {
-    return NextResponse.json({ results: [], mode: "mock", degraded: 0 });
+    return NextResponse.json({ results: [], mode: "mock", failed: 0 });
   }
 
   const { model, mode } = resolveModel(config.model?.trim() || GEN_MODEL_ID);
@@ -117,12 +120,12 @@ export async function POST(req: Request) {
       id: l.id,
       line: mockLine(l as unknown as Lead, config),
     }));
-    return NextResponse.json({ results, mode: "mock", degraded: 0 });
+    return NextResponse.json({ results, mode: "mock", failed: 0 });
   }
 
   const system = buildSystem(config);
   const batches = chunk(leads, 18);
-  let degraded = 0;
+  let failed = 0;
 
   const batchResults = await runPool(batches, 4, async (batch): Promise<GenerateResult[]> => {
     const prompt =
@@ -135,19 +138,27 @@ export async function POST(req: Request) {
         system,
         prompt,
         temperature: 0.7,
+        // Cap the output budget (default was the model max, ~128k) so each
+        // request is lighter and less likely to be throttled/overloaded.
+        maxOutputTokens: Math.min(8000, Math.ceil(config.maxChars / 3) * batch.length + 400),
+        // Retry transient 429/529 (overloaded) errors with backoff.
+        maxRetries: 4,
       });
       const byId = new Map(object.results.map((r) => [r.id, r.line]));
-      // Ensure every lead gets a line even if the model dropped one.
-      return batch.map((l) => ({
-        id: l.id,
-        line: byId.get(l.id) ?? mockLine(l as unknown as Lead, config),
-      }));
-    } catch {
-      degraded += batch.length;
-      return batch.map((l) => ({ id: l.id, line: mockLine(l as unknown as Lead, config) }));
+      // Only keep leads the model actually wrote a line for — never a mock
+      // placeholder when a real model is configured. Dropped leads count as failed.
+      const out = batch
+        .filter((l) => byId.get(l.id)?.trim())
+        .map((l) => ({ id: l.id, line: byId.get(l.id)!.trim() }));
+      failed += batch.length - out.length;
+      return out;
+    } catch (err) {
+      console.error("[generate] chunk failed:", err);
+      failed += batch.length;
+      return [] as GenerateResult[];
     }
   });
 
   const results = batchResults.flat();
-  return NextResponse.json({ results, mode, degraded });
+  return NextResponse.json({ results, mode, failed });
 }
