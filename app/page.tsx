@@ -159,9 +159,27 @@ export default function Page() {
   }
 
   async function handleEnrich(targets?: Lead[]) {
-    const batch = targets ?? targetLeads();
-    if (!batch.length) return;
     const single = Boolean(targets && targets.length === 1);
+    let batch = targets ?? targetLeads();
+
+    // Bulk enrich never re-enriches: only touch leads that have no dossier yet.
+    // (The per-row Enrich button still force-refreshes that single lead.)
+    let skipped = 0;
+    if (!single) {
+      const selectedCount = batch.length;
+      batch = batch.filter((l) => !l.dossier);
+      skipped = selectedCount - batch.length;
+      if (!batch.length) {
+        toast.info(
+          skipped
+            ? `All ${skipped} selected ${skipped === 1 ? "lead is" : "leads are"} already enriched.`
+            : "Nothing to enrich.",
+        );
+        return;
+      }
+    }
+    if (!batch.length) return;
+
     if (single) setBusy(batch.map((l) => l.id), true);
     else setEnriching(true);
 
@@ -210,9 +228,10 @@ export default function Page() {
         toast.success(`Enriched ${ok} lead${ok === 1 ? "" : "s"}`, {
           id: toastId,
           description:
-            provider === "heuristic"
+            (skipped ? `Skipped ${skipped} already enriched. ` : "") +
+            (provider === "heuristic"
               ? "Using row data — add an enrichment key for deeper profiles."
-              : `Source: ${provider}`,
+              : `Source: ${provider}`),
         });
       }
     } finally {
